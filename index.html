@@ -202,12 +202,12 @@ function mostrarMenu(){
       }).setOrigin(0.5);
 
       // hover més fosc
-  sprite.on('pointerover', () => {
-   sprite.setTint(0x444444);
-    sfxCheck.play(volume );  // <-- Reprodueix el so al passar el cursor
-  }).on('pointerout', () => {
-    sprite.clearTint();
-  });
+      sprite.on('pointerover', () => {
+        sprite.setTint(0x444444);
+        sfxCheck.play();  // Reprodueix el so al passar el cursor
+      }).on('pointerout', () => {
+        sprite.clearTint();
+      });
 
       // al clicar
       sprite.on('pointerdown', ()=>{
