@@ -5,9 +5,29 @@
   <title>APNEA SIMULATOR</title>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
   <style>
-    body { margin: 0; text-align: center; background: #000; }
-    canvas { display: block; margin: 0 auto; transition: opacity 1s ease-in-out; }
+    /* ----------- Reset bàsic per a 100% de pantalla ----------- */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    /* ----------- Contenidor del joc ----------- */
+    #gameContainer {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+    /* ----------- Canvas Phaser ----------- */
+    #gameContainer canvas {
+      display: block;
+      margin: 0 auto;
+      image-rendering: pixelated; /* per pixel art */
+    }
 
+    /* ----------- Estils UI sobreposada ----------- */
     #diveButton, #retryButton {
       position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
       padding: 10px 30px; font-size: 16px; z-index: 10;
@@ -30,8 +50,8 @@
     }
 
     #leaderboard {
-      position: absolute; top: 350px; left: 50%; transform: translateX(-50%);
-      font-family: monospace; font-size: 20px; color: #cc99ff;
+      position: absolute; top: 550px; left: 50%; transform: translateX(-50%);
+      font-family: monospace; font-size: 20px; color: #411c66;
       display: none; z-index: 20; text-align: center;
       background: none; padding: 0; border: none;
     }
@@ -50,9 +70,12 @@
   </style>
 </head>
 <body>
+  <!-- Aquí embedim Phaser -->
+  <div id="gameContainer"></div>
+
+  <!-- UI HTML superposada -->
   <button id="diveButton">Dive!</button>
   <button id="retryButton">INICI</button>
-  <!-- inicialitza amb centèsimes -->
   <div id="timer">00:00:00</div>
   <div id="finalScore">Final Time: 00:00:00</div>
   <div id="leaderboard">
@@ -63,24 +86,31 @@
 
 <script>
 const config = {
-  type: Phaser.AUTO, width:800, height:600,
-  physics:{ default:'arcade' },
-  scene:{ preload, create, update }
+  type: Phaser.AUTO,
+  parent: 'gameContainer',    // <— assignem el contenidor responsive
+  width: 800,
+  height: 600,
+  scale: {
+    mode: Phaser.Scale.FIT,            // FIT per ajustar sense deformar
+    autoCenter: Phaser.Scale.CENTER_BOTH
+  },
+  physics: { default: 'arcade' },
+  scene: { preload, create, update }
 };
 
 let game = new Phaser.Game(config);
 let background, beachImage, diver;
-let scrollSpeed=0.1, isScrolling=false, elapsedTime=0;
-let menuMusic, gameMusic;
+let scrollSpeed = 0.1, isScrolling = false, elapsedTime = 0;
+let menuMusic, gameMusic, sfxSelect, sfxSplash, sfxWaves;
 let presentacio, menuInici, jugarText, canviText;
-let diverSelection='cartu';
+let diverSelection = 'cartu';
 
 function preload(){
+  // imatges
   this.load.image('background','assets/bg.png');
   this.load.image('beach','assets/puntuacio.png');
   this.load.image('inici','assets/inici.png');
   this.load.image('inici2','assets/inici2.png');
-  this.load.image('diver','assets/diver.png');
   this.load.image('pchan','assets/pchan.png');
   this.load.image('cartu','assets/cartu.png');
   this.load.image('rata-topo-calva','assets/rata-topo-calva.png');
@@ -89,21 +119,35 @@ function preload(){
   this.load.image('rataSel','assets/rataselector.png');
   this.load.image('presentacio','assets/Presentacio.png');
   this.load.image('menufons','assets/inici.png');
+  // música
   this.load.audio('menuMusic','assets/menu.mp3');
   this.load.audio('gameMusic','assets/dive.mp3');
+  // efectes
+  this.load.audio('select','assets/select.wav');
+  this.load.audio('splash','assets/splash.wav');
+  this.load.audio('onades','assets/onades.wav');
+  this.load.audio('check','assets/check.wav');
 }
 
 function create(){
-  // inicialitza audio
+  // àudio
   menuMusic = this.sound.add('menuMusic',{ loop:true, volume:0.5 });
   gameMusic = this.sound.add('gameMusic',{ loop:true, volume:0.5 });
+  sfxSelect = this.sound.add('select',{ volume:0.5 });
+  sfxSplash = this.sound.add('splash',{ volume:0.8 });
+  sfxWaves  = this.sound.add('onades',{ loop:true, volume:0.4 });
+  sfxCheck  = this.sound.add('check',{ volume:0.8 });
+
+  // música de menú i efecte onades
   menuMusic.play();
+  sfxWaves.play();
 
   // presentació
   presentacio = this.add.image(400,300,'presentacio')
     .setDepth(100).setAlpha(0).setDisplaySize(800,600);
   this.tweens.add({ targets: presentacio, alpha:1, duration:7000 });
   presentacio.setInteractive().on('pointerdown', ()=>{
+    sfxCheck.play();
     this.tweens.add({
       targets: presentacio, alpha:0, duration:7000,
       onComplete: ()=>{ presentacio.destroy(); mostrarMenu.call(this); }
@@ -112,7 +156,7 @@ function create(){
 }
 
 function mostrarMenu(){
-  // assegura música de menú
+  // música menú
   if(gameMusic.isPlaying) gameMusic.stop();
   if(!menuMusic.isPlaying) menuMusic.play();
 
@@ -120,17 +164,17 @@ function mostrarMenu(){
     .setAlpha(0).setDisplaySize(800,600);
   this.tweens.add({ targets: menuInici, alpha:1, duration:1000 });
 
-  jugarText = this.add.text(400,380,'JUGAR',{
-    fontFamily:'monospace', fontSize:'40px', color:'#cc99ff',
-    fontStyle:'bold', backgroundColor:'#000', padding:{x:20,y:10}, align:'center'
-  }).setOrigin(0.5).setInteractive().setAlpha(0).setStroke('#cc99ff',3);
+  jugarText = this.add.text(400,380,'JUGAR',{ fontFamily:'monospace', fontSize:'40px', color:'#cc99ff',
+      fontStyle:'bold', backgroundColor:'#000', padding:{x:20,y:10}, align:'center'
+    }).setOrigin(0.5).setInteractive().setAlpha(0).setStroke('#cc99ff',3);
 
-  canviText = this.add.text(400,460,'CANVI APNEISTA',{
-    fontFamily:'monospace', fontSize:'30px', color:'#cc99ff',
-    fontStyle:'bold', backgroundColor:'#000', padding:{x:20,y:10}, align:'center'
-  }).setOrigin(0.5).setInteractive().setAlpha(0).setStroke('#cc99ff',3);
+  canviText = this.add.text(400,460,'CANVI APNEISTA',{ fontFamily:'monospace', fontSize:'30px', color:'#cc99ff',
+      fontStyle:'bold', backgroundColor:'#000', padding:{x:20,y:10}, align:'center'
+    }).setOrigin(0.5).setInteractive().setAlpha(0).setStroke('#cc99ff',3);
 
+  // selector d’apneista
   canviText.on('pointerdown', ()=>{
+    sfxCheck.play();
     const title = this.add.text(400,100,'SELECCIONA EL TEU APNEISTA',{
       fontFamily:'monospace', fontSize:'28px', color:'#cc99ff', fontStyle:'bold'
     }).setOrigin(0.5);
@@ -139,30 +183,31 @@ function mostrarMenu(){
     jugarText.setAlpha(0);
     canviText.setAlpha(0);
 
-    const selectorBg = this.add.image(400,300,'inici2')
-      .setDisplaySize(800,600);
+    const selectorBg = this.add.image(400,300,'inici2').setDisplaySize(800,600);
 
     const options = [
-      { selectorKey:'cartuSel', gameKey:'cartu', name:'CARTU' },
-      { selectorKey:'pchanSel', gameKey:'pchan', name:'OMIJACK' },
-      { selectorKey:'rataSel',  gameKey:'rata-topo-calva', name:'RATA TOPO' }
+      { selKey:'cartuSel', gameKey:'cartu', name:'CARTU' },
+      { selKey:'pchanSel', gameKey:'pchan', name:'P-CHAN' },
+      { selKey:'rataSel',  gameKey:'rata-topo-calva', name:'RATA TOPO' }
     ];
 
     options.forEach((opt, idx)=>{
-      const spacing=200;
-      const x=400-((options.length-1)*spacing)/2+idx*spacing;
+      const spacing = 200;
+      const x = 400 - ((options.length-1)*spacing)/2 + idx*spacing;
 
-      const sprite = this.add.image(x,300,opt.selectorKey)
+      const sprite = this.add.image(x,300,opt.selKey)
         .setDisplaySize(200,200).setInteractive();
       const label = this.add.text(x,440,opt.name,{
-        fontFamily:'monospace', fontSize:'24px',
-        color:'#9933ff', fontStyle:'bold'
+        fontFamily:'monospace', fontSize:'24px', color:'#9933ff', fontStyle:'bold'
       }).setOrigin(0.5);
 
-      sprite.on('pointerover', ()=> sprite.setTint(0x666666));
-      sprite.on('pointerout',  ()=> sprite.clearTint());
+      // hover més fosc
+      sprite.on('pointerover', ()=> sprite.setTint(0x444444))
+            .on('pointerout',  ()=> sprite.clearTint());
 
+      // al clicar
       sprite.on('pointerdown', ()=>{
+        sfxSelect.play();
         diverSelection = opt.gameKey;
         selectorBg.destroy();
         title.destroy();
@@ -182,14 +227,15 @@ function mostrarMenu(){
 
   this.tweens.add({ targets:[jugarText, canviText], alpha:1, duration:1000 });
   [jugarText, canviText].forEach(txt=>{
-    txt.on('pointerover', ()=>txt.setScale(1.1));
-    txt.on('pointerout',  ()=>txt.setScale(1));
+    txt.on('pointerover', ()=> txt.setScale(1.1))
+       .on('pointerout',  ()=> txt.setScale(1));
   });
 
+  // JUGAR
   jugarText.on('pointerdown', ()=>{
+    sfxSplash.play();
     this.tweens.add({
-      targets:[jugarText, canviText, menuInici],
-      alpha:0, duration:1000,
+      targets:[jugarText, canviText, menuInici], alpha:0, duration:1000,
       onComplete: ()=>{
         document.getElementById('diveButton').style.display='inline-block';
         document.getElementById('timer').style.display='block';
@@ -203,6 +249,7 @@ function startGame(){
   // transició música
   if(menuMusic.isPlaying) menuMusic.stop();
   if(!gameMusic.isPlaying) gameMusic.play();
+  sfxWaves.stop();
 
   background = this.add.tileSprite(0,0,800,600,'background').setOrigin(0,0);
   beachImage = this.add.image(400,300,'beach').setDisplaySize(800,600).setVisible(false);
@@ -211,12 +258,13 @@ function startGame(){
   const angle = ['pchan','cartu'].includes(diverSelection) ? -90 : 0;
   diver.setAngle(angle);
 
+
   document.getElementById('diveButton').style.display='inline-block';
   document.getElementById('timer').style.display='block';
 
   document.getElementById('diveButton').onclick = ()=>{
     isScrolling = !isScrolling;
-    document.getElementById('diveButton').textContent = isScrolling?'Respira':'Dive!';
+    document.getElementById('diveButton').textContent = isScrolling ? 'Respira' : 'Dive!';
     if(isScrolling){
       background.setVisible(true);
       beachImage.setVisible(false);
@@ -226,49 +274,46 @@ function startGame(){
       document.getElementById('selectedApneista').style.display='none';
       document.getElementById('retryButton').style.display='none';
     } else {
+      // deixa en loop onades quan no scrolling
+     sfxWaves.play();
       background.setVisible(false);
       beachImage.setVisible(true);
       diver.setAngle(0);
 
-      // reset timer
+      // reset timer i amaga
       document.getElementById('timer').textContent='00:00:00';
       document.getElementById('diveButton').style.display='none';
       document.getElementById('timer').style.display='none';
 
-      // final time MM:SS:CC
-      const totalMS = elapsedTime;
-      const m = Math.floor(totalMS/60000);
-      const s = Math.floor((totalMS%60000)/1000);
-      const c = Math.floor((totalMS%1000)/10);
+      // mostra Final Time
+      const ms = elapsedTime;
+      const m  = Math.floor(ms/60000),
+            s  = Math.floor((ms%60000)/1000),
+            c  = Math.floor((ms%1000)/10);
       const ft = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}:${c.toString().padStart(2,'0')}`;
-      document.getElementById('finalScore').textContent = `Final Time: ${ft}`;
+      document.getElementById('finalScore').textContent=`Final Time: ${ft}`;
       document.getElementById('finalScore').style.display='block';
 
-      // Top 5
+      // Top5 i UI final (igual que abans)...
       let scores = JSON.parse(localStorage.getItem('scores')||'[]');
-      scores.push(totalMS);
+      scores.push(ms);
       scores.sort((a,b)=>b-a);
       scores = scores.slice(0,5);
       localStorage.setItem('scores', JSON.stringify(scores));
       const listEl = document.getElementById('scoreList');
       listEl.innerHTML = '';
-      scores.forEach(ms=>{
-        const mm = Math.floor(ms/60000);
-        const ss = Math.floor((ms%60000)/1000);
-        const cc = Math.floor((ms%1000)/10);
-        const txt = `${mm.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}:${cc.toString().padStart(2,'0')}`;
-        const li = document.createElement('li');
-        li.textContent = txt;
+      scores.forEach(val=>{
+        const mm = Math.floor(val/60000),
+              ss = Math.floor((val%60000)/1000),
+              cc = Math.floor((val%1000)/10);
+        const txt=`${mm.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}:${cc.toString().padStart(2,'0')}`;
+        const li=document.createElement('li'); li.textContent=txt;
         listEl.appendChild(li);
       });
       document.getElementById('leaderboard').style.display='block';
-
-      // mostra apneista
-      const sel = document.getElementById('selectedApneista');
-      sel.textContent = diverSelection.toUpperCase();
-      sel.style.display = 'block';
-
-      document.getElementById('retryButton').style.display = 'inline-block';
+      document.getElementById('selectedApneista').textContent = diverSelection.toUpperCase();
+      document.getElementById('selectedApneista').style.display='block';
+      document.getElementById('retryButton').style.display='inline-block';
     }
   };
 
@@ -294,3 +339,8 @@ function update(time, delta){
 </script>
 </body>
 </html>
+<!--
+  APNEA SIMULATOR
+  ----------------
+  Un joc senzill de simulació d'apnea amb Phaser 3.
+  Codi original: Omar
