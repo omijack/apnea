@@ -6,172 +6,291 @@
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
   <style>
     body { margin: 0; text-align: center; background: #000; }
-    canvas { display: block; margin: 0 auto; }
+    canvas { display: block; margin: 0 auto; transition: opacity 1s ease-in-out; }
+
     #diveButton, #retryButton {
-      position: absolute;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 10px 20px;
-      font-size: 20px;
-      z-index: 10;
-      background-color: #0077cc;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      padding: 10px 30px; font-size: 16px; z-index: 10;
+      color: #fff;
+      background: repeating-linear-gradient(45deg,
+        #5e3a8c,#5e3a8c 10px,#472c74 10px,#472c74 20px);
+      border: 4px solid #cc99ff; box-shadow: 0 0 10px #cc99ff;
+      font-family: monospace; cursor: pointer; display: none;
     }
-    #retryButton {
-      display: none;
-    }
+    #retryButton { top: 60px; display: none; }
+
     #timer {
-      position: absolute;
-      top: 60px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 24px;
-      color: white;
-      z-index: 10;
+      position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+      font-size: 24px; color: #fff; z-index: 10; display: none;
     }
     #finalScore {
-      position: absolute;
-      top: 150px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 36px;
-      color: yellow;
-      font-weight: bold;
-      display: none;
-      z-index: 10;
+      position: absolute; top: 150px; left: 50%; transform: translateX(-50%);
+      font-size: 36px; color: yellow; font-weight: bold;
+      display: none; z-index: 10;
     }
+
     #leaderboard {
-      position: absolute;
-      top: 220px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 20px;
-      color: white;
-      display: none;
-      z-index: 10;
-      text-align: left;
-      background: rgba(0, 0, 0, 0.6);
-      padding: 10px;
-      border-radius: 10px;
+      position: absolute; top: 350px; left: 50%; transform: translateX(-50%);
+      font-family: monospace; font-size: 20px; color: #cc99ff;
+      display: none; z-index: 20; text-align: center;
+      background: none; padding: 0; border: none;
+    }
+    #leaderboard ol {
+      list-style: none; padding: 0; margin: 10px 0 0;
+    }
+    #leaderboard li {
+      margin: 5px 0;
+    }
+
+    #selectedApneista {
+      position: absolute; bottom: 20px; left: 20px;
+      font-family: monospace; font-size: 20px; color: #cc99ff;
+      display: none; z-index: 10;
     }
   </style>
 </head>
 <body>
-<button id="diveButton">Dive!</button>
-<button id="retryButton">Reintentar</button>
-<div id="timer">00.00</div>
-<div id="finalScore">Final Time: 00.00</div>
-<div id="leaderboard">
-  <strong>Top 5:</strong>
-  <ol id="scoreList"></ol>
-</div>
+  <button id="diveButton">Dive!</button>
+  <button id="retryButton">INICI</button>
+  <!-- inicialitza amb centèsimes -->
+  <div id="timer">00:00:00</div>
+  <div id="finalScore">Final Time: 00:00:00</div>
+  <div id="leaderboard">
+    <strong>Top 5:</strong>
+    <ol id="scoreList"></ol>
+  </div>
+  <div id="selectedApneista"></div>
+
 <script>
-  const config = {
-    type: Phaser.AUTO,
-    width: 800,
-    height: 600,
-    physics: {
-      default: 'arcade',
-    },
-    scene: {
-      preload: preload,
-      create: create,
-      update: update
+const config = {
+  type: Phaser.AUTO, width:800, height:600,
+  physics:{ default:'arcade' },
+  scene:{ preload, create, update }
+};
+
+let game = new Phaser.Game(config);
+let background, beachImage, diver;
+let scrollSpeed=0.1, isScrolling=false, elapsedTime=0;
+let menuMusic, gameMusic;
+let presentacio, menuInici, jugarText, canviText;
+let diverSelection='cartu';
+
+function preload(){
+  this.load.image('background','assets/bg.png');
+  this.load.image('beach','assets/puntuacio.png');
+  this.load.image('inici','assets/inici.png');
+  this.load.image('inici2','assets/inici2.png');
+  this.load.image('diver','assets/diver.png');
+  this.load.image('pchan','assets/pchan.png');
+  this.load.image('cartu','assets/cartu.png');
+  this.load.image('rata-topo-calva','assets/rata-topo-calva.png');
+  this.load.image('pchanSel','assets/pchanselector.png');
+  this.load.image('cartuSel','assets/cartuselector.png');
+  this.load.image('rataSel','assets/rataselector.png');
+  this.load.image('presentacio','assets/Presentacio.png');
+  this.load.image('menufons','assets/inici.png');
+  this.load.audio('menuMusic','assets/menu.mp3');
+  this.load.audio('gameMusic','assets/dive.mp3');
+}
+
+function create(){
+  // inicialitza audio
+  menuMusic = this.sound.add('menuMusic',{ loop:true, volume:0.5 });
+  gameMusic = this.sound.add('gameMusic',{ loop:true, volume:0.5 });
+  menuMusic.play();
+
+  // presentació
+  presentacio = this.add.image(400,300,'presentacio')
+    .setDepth(100).setAlpha(0).setDisplaySize(800,600);
+  this.tweens.add({ targets: presentacio, alpha:1, duration:7000 });
+  presentacio.setInteractive().on('pointerdown', ()=>{
+    this.tweens.add({
+      targets: presentacio, alpha:0, duration:7000,
+      onComplete: ()=>{ presentacio.destroy(); mostrarMenu.call(this); }
+    });
+  });
+}
+
+function mostrarMenu(){
+  // assegura música de menú
+  if(gameMusic.isPlaying) gameMusic.stop();
+  if(!menuMusic.isPlaying) menuMusic.play();
+
+  menuInici = this.add.image(400,300,'menufons')
+    .setAlpha(0).setDisplaySize(800,600);
+  this.tweens.add({ targets: menuInici, alpha:1, duration:1000 });
+
+  jugarText = this.add.text(400,380,'JUGAR',{
+    fontFamily:'monospace', fontSize:'40px', color:'#cc99ff',
+    fontStyle:'bold', backgroundColor:'#000', padding:{x:20,y:10}, align:'center'
+  }).setOrigin(0.5).setInteractive().setAlpha(0).setStroke('#cc99ff',3);
+
+  canviText = this.add.text(400,460,'CANVI APNEISTA',{
+    fontFamily:'monospace', fontSize:'30px', color:'#cc99ff',
+    fontStyle:'bold', backgroundColor:'#000', padding:{x:20,y:10}, align:'center'
+  }).setOrigin(0.5).setInteractive().setAlpha(0).setStroke('#cc99ff',3);
+
+  canviText.on('pointerdown', ()=>{
+    const title = this.add.text(400,100,'SELECCIONA EL TEU APNEISTA',{
+      fontFamily:'monospace', fontSize:'28px', color:'#cc99ff', fontStyle:'bold'
+    }).setOrigin(0.5);
+
+    menuInici.setAlpha(0);
+    jugarText.setAlpha(0);
+    canviText.setAlpha(0);
+
+    const selectorBg = this.add.image(400,300,'inici2')
+      .setDisplaySize(800,600);
+
+    const options = [
+      { selectorKey:'cartuSel', gameKey:'cartu', name:'CARTU' },
+      { selectorKey:'pchanSel', gameKey:'pchan', name:'OMIJACK' },
+      { selectorKey:'rataSel',  gameKey:'rata-topo-calva', name:'RATA TOPO' }
+    ];
+
+    options.forEach((opt, idx)=>{
+      const spacing=200;
+      const x=400-((options.length-1)*spacing)/2+idx*spacing;
+
+      const sprite = this.add.image(x,300,opt.selectorKey)
+        .setDisplaySize(200,200).setInteractive();
+      const label = this.add.text(x,440,opt.name,{
+        fontFamily:'monospace', fontSize:'24px',
+        color:'#9933ff', fontStyle:'bold'
+      }).setOrigin(0.5);
+
+      sprite.on('pointerover', ()=> sprite.setTint(0x666666));
+      sprite.on('pointerout',  ()=> sprite.clearTint());
+
+      sprite.on('pointerdown', ()=>{
+        diverSelection = opt.gameKey;
+        selectorBg.destroy();
+        title.destroy();
+        options.forEach(o=>{
+          o.sprite && o.sprite.destroy();
+          o.label  && o.label.destroy();
+        });
+        menuInici.setAlpha(1);
+        jugarText.setAlpha(1);
+        canviText.setAlpha(1);
+      });
+
+      opt.sprite = sprite;
+      opt.label  = label;
+    });
+  });
+
+  this.tweens.add({ targets:[jugarText, canviText], alpha:1, duration:1000 });
+  [jugarText, canviText].forEach(txt=>{
+    txt.on('pointerover', ()=>txt.setScale(1.1));
+    txt.on('pointerout',  ()=>txt.setScale(1));
+  });
+
+  jugarText.on('pointerdown', ()=>{
+    this.tweens.add({
+      targets:[jugarText, canviText, menuInici],
+      alpha:0, duration:1000,
+      onComplete: ()=>{
+        document.getElementById('diveButton').style.display='inline-block';
+        document.getElementById('timer').style.display='block';
+        startGame.call(this);
+      }
+    });
+  });
+}
+
+function startGame(){
+  // transició música
+  if(menuMusic.isPlaying) menuMusic.stop();
+  if(!gameMusic.isPlaying) gameMusic.play();
+
+  background = this.add.tileSprite(0,0,800,600,'background').setOrigin(0,0);
+  beachImage = this.add.image(400,300,'beach').setDisplaySize(800,600).setVisible(false);
+  diver      = this.add.sprite(400,300,diverSelection).setScale(1.5);
+
+  const angle = ['pchan','cartu'].includes(diverSelection) ? -90 : 0;
+  diver.setAngle(angle);
+
+  document.getElementById('diveButton').style.display='inline-block';
+  document.getElementById('timer').style.display='block';
+
+  document.getElementById('diveButton').onclick = ()=>{
+    isScrolling = !isScrolling;
+    document.getElementById('diveButton').textContent = isScrolling?'Pause':'Dive!';
+    if(isScrolling){
+      background.setVisible(true);
+      beachImage.setVisible(false);
+      diver.setAngle(angle);
+      document.getElementById('finalScore').style.display='none';
+      document.getElementById('leaderboard').style.display='none';
+      document.getElementById('selectedApneista').style.display='none';
+      document.getElementById('retryButton').style.display='none';
+    } else {
+      background.setVisible(false);
+      beachImage.setVisible(true);
+      diver.setAngle(0);
+
+      // reset timer
+      document.getElementById('timer').textContent='00:00:00';
+      document.getElementById('diveButton').style.display='none';
+      document.getElementById('timer').style.display='none';
+
+      // final time MM:SS:CC
+      const totalMS = elapsedTime;
+      const m = Math.floor(totalMS/60000);
+      const s = Math.floor((totalMS%60000)/1000);
+      const c = Math.floor((totalMS%1000)/10);
+      const ft = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}:${c.toString().padStart(2,'0')}`;
+      document.getElementById('finalScore').textContent = `Final Time: ${ft}`;
+      document.getElementById('finalScore').style.display='block';
+
+      // Top 5
+      let scores = JSON.parse(localStorage.getItem('scores')||'[]');
+      scores.push(totalMS);
+      scores.sort((a,b)=>b-a);
+      scores = scores.slice(0,5);
+      localStorage.setItem('scores', JSON.stringify(scores));
+      const listEl = document.getElementById('scoreList');
+      listEl.innerHTML = '';
+      scores.forEach(ms=>{
+        const mm = Math.floor(ms/60000);
+        const ss = Math.floor((ms%60000)/1000);
+        const cc = Math.floor((ms%1000)/10);
+        const txt = `${mm.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}:${cc.toString().padStart(2,'0')}`;
+        const li = document.createElement('li');
+        li.textContent = txt;
+        listEl.appendChild(li);
+      });
+      document.getElementById('leaderboard').style.display='block';
+
+      // mostra apneista
+      const sel = document.getElementById('selectedApneista');
+      sel.textContent = diverSelection.toUpperCase();
+      sel.style.display = 'block';
+
+      document.getElementById('retryButton').style.display = 'inline-block';
     }
   };
 
-  let game = new Phaser.Game(config);
+  document.getElementById('retryButton').onclick = ()=>{
+    ['retryButton','finalScore','leaderboard','selectedApneista','diveButton','timer']
+      .forEach(id=> document.getElementById(id).style.display='none');
+    elapsedTime = 0; isScrolling = false;
+    mostrarMenu.call(this);
+  };
+}
 
-  let background;
-  let beachImage;
-  let diver;
-  let scrollSpeed = 1;
-  let isScrolling = false;
-  let elapsedTime = 0;
-  let music;
-
-  function preload() {
-    this.load.image('background', 'assets/bg.png');
-    this.load.image('beach', 'assets/beach.png');
-    this.load.image('diver', 'assets/diver.png');
-    this.load.audio('bgmusic', 'assets/dive.mp3');
+function update(time, delta){
+  if(isScrolling){
+    background.tilePositionY += scrollSpeed;
+    elapsedTime += delta;
+    const mm = Math.floor(elapsedTime/60000),
+          ss = Math.floor((elapsedTime%60000)/1000),
+          cc = Math.floor((elapsedTime%1000)/10);
+    document.getElementById('timer').textContent =
+      `${mm.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}:${cc.toString().padStart(2,'0')}`;
   }
-
-  function create() {
-    background = this.add.tileSprite(0, 0, 800, 600, 'background');
-    background.setOrigin(0, 0);
-
-    beachImage = this.add.image(400, 300, 'beach');
-    beachImage.setDisplaySize(800, 600);
-    beachImage.setVisible(false);
-
-    diver = this.add.sprite(400, 300, 'diver');
-    diver.setScale(1.5);
-    diver.setAngle(180);
-
-    music = this.sound.add('bgmusic', { loop: true, volume: 0.5 });
-
-    document.getElementById("diveButton").addEventListener("click", () => {
-      isScrolling = !isScrolling;
-      document.getElementById("diveButton").textContent = isScrolling ? "Pause" : "Dive!";
-
-      if (isScrolling) {
-        if (!music.isPlaying) music.play();
-        background.setVisible(true);
-        beachImage.setVisible(false);
-        diver.setAngle(180);
-        document.getElementById("finalScore").style.display = "none";
-        document.getElementById("leaderboard").style.display = "none";
-      } else {
-        music.stop();
-        background.setVisible(false);
-        beachImage.setVisible(true);
-        diver.setAngle(0);
-
-        const seconds = Math.floor(elapsedTime / 1000);
-        const hundredths = Math.floor((elapsedTime % 1000) / 10);
-        const finalTime = `${seconds.toString().padStart(2, '0')}.${hundredths.toString().padStart(2, '0')}`;
-        document.getElementById("finalScore").textContent = `Final Time: ${finalTime}`;
-        document.getElementById("finalScore").style.display = "block";
-        document.getElementById("diveButton").disabled = true;
-        document.getElementById("retryButton").style.display = "inline-block";
-
-        let scores = JSON.parse(localStorage.getItem('scores') || '[]');
-        scores.push(parseFloat(finalTime));
-        scores.sort((a, b) => b - a);
-        scores = scores.slice(0, 5);
-        localStorage.setItem('scores', JSON.stringify(scores));
-
-        const scoreList = document.getElementById("scoreList");
-        scoreList.innerHTML = "";
-        scores.forEach(score => {
-          const li = document.createElement("li");
-          li.textContent = score.toFixed(2);
-          scoreList.appendChild(li);
-        });
-        document.getElementById("leaderboard").style.display = "block";
-      }
-    });
-
-    document.getElementById("retryButton").addEventListener("click", () => {
-      game.destroy(true);
-      document.location.reload();
-    });
-  }
-
-  function update(time, delta) {
-    if (isScrolling) {
-      background.tilePositionY += scrollSpeed;
-      elapsedTime += delta;
-      const seconds = Math.floor(elapsedTime / 1000);
-      const hundredths = Math.floor((elapsedTime % 1000) / 10);
-      document.getElementById("timer").textContent = `${seconds.toString().padStart(2, '0')}.${hundredths.toString().padStart(2, '0')}`;
-    }
-  }
+}
 </script>
 </body>
 </html>
